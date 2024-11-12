@@ -25,7 +25,6 @@ genderList = {0: 'M', 1: 'F'}
 def fetch_file_upload(location, age_cluster_key, gender):
     url = "http://localhost:5000/display/fetchAdIds"
     
-    print(f"Making POST request to {url} with data: locationName={location}, ageGroup={age_cluster_key}, gender={gender}")
     response = requests.post(url, json={"locationName": location, "ageGroup": str(age_cluster_key), "gender": str(gender)})
     
     # Step 3: Checking if the request for ad IDs was successful
@@ -37,13 +36,11 @@ def fetch_file_upload(location, age_cluster_key, gender):
         for ad_id in adIds:
             print(f"Processing ad ID: {ad_id}")
             ad_url = f"http://localhost:5000/display/{ad_id}"
-            print(f"Making GET request to {ad_url} with data: adId={ad_id}")
             
             ad_response = requests.get(ad_url, json={"adId": ad_id})
 
             # Step 5: Checking if fetching ad data was successful
             if ad_response.status_code == 200:
-                print(f"Successfully fetched data for ad ID: {ad_id}")
                 ad_data = ad_response.json().get('ad', {})
                 file_upload = ad_data.get('fileUpload')
                 file_type = ad_data.get('type')
@@ -51,13 +48,10 @@ def fetch_file_upload(location, age_cluster_key, gender):
                 adName=ad_data.get('adName')
                 deductedAmount=ad_data.get('creditsDeducted')
 
-                
-
                 print(f"Ad data - File Upload: {file_upload}, Type: {file_type}")
 
                 # Step 6: If file_upload is found, call display_ad
                 if file_upload:
-                    print("Calling display_ad function with file_upload and file_type")
                     
                     reducePointsUrl=f"http://localhost:5000/display/reduceCredits"
                     res = requests.post(reducePointsUrl, json={
@@ -88,6 +82,11 @@ def fetch_file_upload(location, age_cluster_key, gender):
 
 def display_ad(ad_url, ad_type):
     start_time = time.time()
+
+    # Create a named window and set it to fullscreen mode
+    cv2.namedWindow("Advertisement", cv2.WINDOW_NORMAL)
+    cv2.setWindowProperty("Advertisement", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
     if ad_type == "image":
         resp = requests.get(ad_url)
         if resp.status_code == 200:
@@ -96,7 +95,7 @@ def display_ad(ad_url, ad_type):
             if ad_img is not None:
                 cv2.imshow("Advertisement", ad_img)
                 while cv2.getWindowProperty("Advertisement", cv2.WND_PROP_VISIBLE) >= 1:
-                    if time.time() - start_time > 10:
+                    if time.time() - start_time > 10:  # Display for 10 seconds
                         break
                     cv2.waitKey(1)
             else:
@@ -105,7 +104,6 @@ def display_ad(ad_url, ad_type):
             print("Failed to fetch image from URL.")
     
     elif ad_type == "video":
-        # Display as video
         cap = cv2.VideoCapture(ad_url)
         if not cap.isOpened():
             print("Failed to fetch video from URL.")
@@ -113,10 +111,10 @@ def display_ad(ad_url, ad_type):
 
         while cap.isOpened():
             ret, frame = cap.read()
-            if not ret:
+            if not ret or (time.time() - start_time > 10):  # Display for 10 seconds or until video ends
                 break
             cv2.imshow("Advertisement", frame)
-            if cv2.waitKey(25) & 0xFF == ord('q'):  # Press 'q' to stop the video
+            if cv2.waitKey(25) & 0xFF == ord('q'):  # Press 'q' to stop the video early
                 break
 
         cap.release()
@@ -124,6 +122,7 @@ def display_ad(ad_url, ad_type):
         print("Unsupported ad format.")
 
     cv2.destroyAllWindows()
+
 
 
 # Paths to models
