@@ -1,14 +1,10 @@
 import cv2
 import requests
 import numpy as np
-from pymongo import MongoClient
 from collections import Counter
+import time
 
-# MongoDB connection
-client = MongoClient("mongodb+srv://rach:crowdcast-backend@cluster0.ullhh.mongodb.net")
-db = client["test"]
-location_collection = db["locations"]
-advertisement_collection = db["advertisements"]
+token='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImlkIjoiNjcyZThlZDYzM2VkZDhjYzVkMzU0NDNjIn0sImlhdCI6MTczMTM1MjMxN30.3CdlPew-L0-fHlDHXlUWh5ZHKZXh8fJiIxsSHnuHw-g'
 
 # Device-specific location for ad targeting
 device_location = "Railway Stations"
@@ -26,67 +22,83 @@ ageList = {
 }
 genderList = {0: 'M', 1: 'F'}
 
-# Function to fetch ad IDs based on location
 def fetch_file_upload(location, age_cluster_key, gender):
-    try:
-        url = "http://localhost:5000/api/fetchAdIds"
-        response = requests.post(url, json={"locationName": location, "ageGroup": str(age_cluster_key), "gender": str(gender)})
+    url = "http://localhost:5000/display/fetchAdIds"
+    
+    print(f"Making POST request to {url} with data: locationName={location}, ageGroup={age_cluster_key}, gender={gender}")
+    response = requests.post(url, json={"locationName": location, "ageGroup": str(age_cluster_key), "gender": str(gender)})
+    
+    # Step 3: Checking if the request for ad IDs was successful
+    if response.status_code == 200:
+        adIds = response.json().get('adIds', [])
+        print(f"Fetched ads: {adIds}")
         
-        if response.status_code == 200:
-            ad_ids = response.json().get("adIds", [])
-            file_uploads = []
-            for ad in ad_ids:
-                ad_url = f"http://localhost:5000/api/{ad}"
-                ad_response = requests.get(ad_url, json={"adId": ad})
-                
-                if ad_response.status_code == 200:
-                    ad_data = ad_response.json().get('ad', {})
-                    file_upload = ad_data.get('fileUpload')
-                    file_type = ad_data.get('type')
-                    if file_upload:
-                        file_uploads.append(file_upload)
-                        print("File Upload URL:", file_upload)
-                        display_ad(file_upload, file_type)
-                        
-                else:
-                    print(f"Failed to fetch ad data for ad ID {ad}. Status code: {ad_response.status_code}")
+        # Step 4: Looping through each ad ID
+        for ad_id in adIds:
+            print(f"Processing ad ID: {ad_id}")
+            ad_url = f"http://localhost:5000/display/{ad_id}"
+            print(f"Making GET request to {ad_url} with data: adId={ad_id}")
             
-            return file_uploads
-        else:
-            print(f"Failed to fetch ad IDs. Status code: {response.status_code}")
-            return []
-    except Exception as e:
-        print(f"An error occurred while fetching ad IDs: {e}")
-        return []
+            ad_response = requests.get(ad_url, json={"adId": ad_id})
 
-# Function to display ads based on predicted age group and gender
-def show_ad_based_on_prediction(location, age_cluster_key, gender):
-    try:
-        ad_ids = fetch_file_upload(location, age_cluster_key, gender)
-        
-        if not ad_ids:
-            print("No ad IDs retrieved.")
-            return
+            # Step 5: Checking if fetching ad data was successful
+            if ad_response.status_code == 200:
+                print(f"Successfully fetched data for ad ID: {ad_id}")
+                ad_data = ad_response.json().get('ad', {})
+                file_upload = ad_data.get('fileUpload')
+                file_type = ad_data.get('type')
+                userId=ad_data.get('userId')
+                adName=ad_data.get('adName')
+                deductedAmount=ad_data.get('creditsDeducted')
 
-        for ad_id in ad_ids:
-            ad_data = advertisement_collection.find_one({"_id": ad_id})
-            if ad_data:
-                ad_url = ad_data["fileUpload"]  # Cloudinary URL
-                ad_type = ad_data["type"]  # Get type field to check if it's an image or video
-                print(f"Displaying {ad_type} ad from URL:", ad_url)
-    except Exception as e:
-        print(f"An error occurred in show_ad_based_on_prediction: {e}")
+                
+
+                print(f"Ad data - File Upload: {file_upload}, Type: {file_type}")
+
+                # Step 6: If file_upload is found, call display_ad
+                if file_upload:
+                    print("Calling display_ad function with file_upload and file_type")
+                    
+                    reducePointsUrl=f"http://localhost:5000/display/reduceCredits"
+                    res = requests.post(reducePointsUrl, json={
+                        "userId": userId,
+                        "credits": deductedAmount
+                    })
+                    if(res.status_code==200):
+                        print('Points Deducted: ', deductedAmount)
+                        timeline_url = "http://localhost:5000/display/addToTimeline"
+                        res = requests.post(timeline_url, json={
+                        "userId": userId,
+                        "adId": ad_id,
+                        "adName": adName,
+                        "locationName": location,
+                        "deductedAmount": deductedAmount
+                        })
+                        if res.status_code == 201:
+                            display_ad(file_upload, file_type)
+                        else:
+                            print(f"failed to play ad {res.status_code}")    
+                else:
+                    print(f"No file upload found for ad ID: {ad_id}")
+            else:
+                print(f"Failed to fetch ad data for ad ID {ad_id}. Status code: {ad_response.status_code}")
+    else:
+        print(f"Failed to fetch ad IDs. Status code: {response.status_code}")
+
 
 def display_ad(ad_url, ad_type):
+    start_time = time.time()
     if ad_type == "image":
-        # Display as image
         resp = requests.get(ad_url)
         if resp.status_code == 200:
             ad_data = np.frombuffer(resp.content, np.uint8)
             ad_img = cv2.imdecode(ad_data, cv2.IMREAD_COLOR)
             if ad_img is not None:
                 cv2.imshow("Advertisement", ad_img)
-                cv2.waitKey(0)  # Wait until a key is pressed to close ad
+                while cv2.getWindowProperty("Advertisement", cv2.WND_PROP_VISIBLE) >= 1:
+                    if time.time() - start_time > 10:
+                        break
+                    cv2.waitKey(1)
             else:
                 print("Failed to decode image.")
         else:
@@ -114,13 +126,13 @@ def display_ad(ad_url, ad_type):
     cv2.destroyAllWindows()
 
 
-# Model paths
-faceProto = "opencv_face_detector.pbtxt"
-faceModel = "opencv_face_detector_uint8.pb"
-ageProto = "age_deploy.prototxt"
-ageModel = "age_net.caffemodel"
-genderProto = "gender_deploy.prototxt"
-genderModel = "gender_net.caffemodel"
+# Paths to models
+faceProto = "d:/CrowdCast/caffe model/opencv_face_detector.pbtxt"
+faceModel = "d:/CrowdCast/caffe model/opencv_face_detector_uint8.pb"
+ageProto = "d:/CrowdCast/caffe model/age_deploy.prototxt"
+ageModel = "d:/CrowdCast/caffe model/age_net.caffemodel"
+genderProto = "d:/CrowdCast/caffe model/gender_deploy.prototxt"
+genderModel = "d:/CrowdCast/caffe model/gender_net.caffemodel"
 
 def faceBox(faceNet, frame):
     frameHeight = frame.shape[0]
@@ -190,12 +202,17 @@ while True:
             age_predictions.append(age_cluster_key)
             gender_predictions.append(gender_key)
             frame_count += 1
-        elif mode_age is None and mode_gender is None:
+        else:
+            # Calculate the most common age and gender from predictions
             mode_age = Counter(age_predictions).most_common(1)[0][0]
             mode_gender = Counter(gender_predictions).most_common(1)[0][0]
             print(f"Predicted Gender: {genderList[mode_gender]}, Predicted Age Cluster: {mode_age}")
-            fetch_file_upload(device_location, age_cluster_key, genderList[mode_gender])
-
+            fetch_file_upload(device_location, mode_age, genderList[mode_gender])
+            
+            # Reset for the next prediction cycle
+            age_predictions.clear()
+            gender_predictions.clear()
+            frame_count = 0
         label = f"{genderList[mode_gender] if mode_gender is not None else gender}, {ageList[mode_age] if mode_age is not None else age}"
         cv2.putText(frame, label, (bbox[0], bbox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
 
