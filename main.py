@@ -7,18 +7,17 @@ import time
 token='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImlkIjoiNjcyZThlZDYzM2VkZDhjYzVkMzU0NDNjIn0sImlhdCI6MTczMTM1MjMxN30.3CdlPew-L0-fHlDHXlUWh5ZHKZXh8fJiIxsSHnuHw-g'
 
 # Device-specific location for ad targeting
-device_location = "Railway Stations"
+device_location = "Universities and Colleges"
 
 # Map age clusters and genders for database compatibility
 ageList = {
-    1: '(0-2)',
-    2: '(4-6)',
-    3: '(8-12)',
-    4: '(15-20)',
-    5: '(25-32)',
-    6: '(38-43)',
-    7: '(48-53)',
-    8: '(60-100)'
+    1: '(2-7)',
+    2: '(8-15)',
+    3: '(16-24)',
+    4: '(25-32)',
+    5: '(35-45)',
+    6: '(46-53)',
+    7: '(60-100)'
 }
 genderList = {0: 'M', 1: 'F'}
 
@@ -170,7 +169,7 @@ gender_predictions = []
 mode_age = None
 mode_gender = None
 frame_count = 0
-initial_frames = 100
+initial_frames = 150
 
 while True:
     ret, frame = video.read()
